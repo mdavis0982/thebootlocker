@@ -3,19 +3,22 @@ const mysql = require("mysql2");
 const bcrypt = require("bcrypt");
 const path = require("path");
 
-const app = express(); // <-- ADD THIS LINE
+const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ========== DATABASE ==========
 let db;
 let dbConfig;
 
 if (process.env.DATABASE_URL) {
-  // Use Render's PostgreSQL database
+  // Use Render's PostgreSQL database – parse the URL properly
+  const url = new URL(process.env.DATABASE_URL);
   dbConfig = {
-    host: process.env.DATABASE_URL.split("@")[1].split(":")[0],
-    user: process.env.DATABASE_URL.split("//")[1].split(":")[0],
-    password: process.env.DATABASE_URL.split(":")[2].split("@")[0],
-    database: process.env.DATABASE_URL.split("/").pop(),
-    port: 5432, // PostgreSQL default port
+    host: url.hostname,
+    user: url.username,
+    password: url.password,
+    database: url.pathname.substring(1), // Remove leading slash
+    port: url.port || 5432,
     ssl: { rejectUnauthorized: false },
   };
   console.log("📦 Database: Render (production)");
