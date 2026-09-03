@@ -1,22 +1,31 @@
-const express = require("express");
-const mysql = require("mysql2");
-const bcrypt = require("bcrypt");
-const path = require("path");
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
 // ========== DATABASE ==========
-// Use DATABASE_URL from environment (Render) or fallback to local
-const db = mysql.createConnection(
-  process.env.DATABASE_URL || {
+let db;
+let dbConfig;
+
+if (process.env.DATABASE_URL) {
+  // Use Render's PostgreSQL database
+  dbConfig = {
+    host: process.env.DATABASE_URL.split("@")[1].split(":")[0],
+    user: process.env.DATABASE_URL.split("//")[1].split(":")[0],
+    password: process.env.DATABASE_URL.split(":")[2].split("@")[0],
+    database: process.env.DATABASE_URL.split("/").pop(),
+    port: 5432, // PostgreSQL default port
+    ssl: { rejectUnauthorized: false },
+  };
+  console.log("📦 Database: Render (production)");
+} else {
+  // Fallback to local MySQL
+  dbConfig = {
     host: "localhost",
     user: "root",
     password: "root",
     database: "boot_locker",
     port: 8889,
-  },
-);
+  };
+  console.log("📦 Database: Local");
+}
+
+db = mysql.createConnection(dbConfig);
 
 db.connect((err) => {
   if (err) {
