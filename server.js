@@ -24,6 +24,28 @@ db.connect((err) => {
     process.exit(1);
   }
   console.log("✅ DB connected successfully");
+
+  // ===== CREATE TABLE IF NOT EXISTS =====
+  const createTableSQL = `
+    CREATE TABLE IF NOT EXISTS products (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      price DECIMAL(10,2) NOT NULL,
+      brand VARCHAR(100),
+      size VARCHAR(20),
+      condition VARCHAR(50),
+      image_url VARCHAR(500),
+      is_sold BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  db.query(createTableSQL, (err) => {
+    if (err) {
+      console.error("⚠️ Table creation warning:", err.message);
+    } else {
+      console.log("✅ Products table ready");
+    }
+  });
 });
 
 // ========== MIDDLEWARE ==========
