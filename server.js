@@ -2,6 +2,9 @@ const express = require("express");
 const mysql = require("mysql2");
 const bcrypt = require("bcrypt");
 const path = require("path");
+
+const app = express(); // <-- ADD THIS LINE
+const PORT = process.env.PORT || 3000;
 let db;
 let dbConfig;
 
