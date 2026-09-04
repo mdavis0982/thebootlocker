@@ -1,246 +1,373 @@
-const express = require("express");
-const mysql = require("mysql2");
-const bcrypt = require("bcrypt");
+require("dotenv").config();
+
+const crypto = require("crypto");
 const path = require("path");
+const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const { Pool } = require("pg");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const TOKEN_LIFETIME_MS = 8 * 60 * 60 * 1000;
 
-// ========== DATABASE ==========
-let db;
-let dbConfig;
+const requiredEnvironment = [
+  "DATABASE_URL",
+  "ADMIN_USER",
+  "ADMIN_PASSWORD",
+  "ADMIN_TOKEN_SECRET",
+];
+const missingEnvironment = requiredEnvironment.filter(
+  (name) => !process.env[name],
+);
 
-if (process.env.DATABASE_URL) {
-  // Use Render's PostgreSQL database – parse the URL properly
-  const url = new URL(process.env.DATABASE_URL);
-  dbConfig = {
-    host: url.hostname,
-    user: url.username,
-    password: url.password,
-    database: url.pathname.substring(1), // Remove leading slash
-    port: url.port || 5432,
-    ssl: { rejectUnauthorized: false },
-  };
-  console.log("📦 Database: Render (production)");
-} else {
-  // Fallback to local MySQL
-  dbConfig = {
-    host: "localhost",
-    user: "root",
-    password: "root",
-    database: "boot_locker",
-    port: 8889,
-  };
-  console.log("📦 Database: Local");
+if (missingEnvironment.length > 0) {
+  console.error(
+    `Missing required environment variables: ${missingEnvironment.join(", ")}`,
+  );
+  process.exit(1);
 }
 
-db = mysql.createConnection(dbConfig);
+if (process.env.ADMIN_TOKEN_SECRET.length < 32) {
+  console.error("ADMIN_TOKEN_SECRET must contain at least 32 characters.");
+  process.exit(1);
+}
 
-db.connect((err) => {
-  if (err) {
-    console.error("❌ DB connection failed:", err);
-    process.exit(1);
+const databaseConfig = {
+  connectionString: process.env.DATABASE_URL,
+  max: 10,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+};
+
+if (process.env.DATABASE_SSL === "true") {
+  databaseConfig.ssl = { rejectUnauthorized: false };
+} else if (process.env.DATABASE_SSL === "false") {
+  databaseConfig.ssl = false;
+}
+
+const pool = new Pool(databaseConfig);
+
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdn.jsdelivr.net",
+          "https://cdnjs.cloudflare.com",
+        ],
+        scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+        fontSrc: ["'self'", "data:", "https://cdnjs.cloudflare.com"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+      },
+    },
+  }),
+);
+app.use(express.json({ limit: "32kb" }));
+app.use(express.static(path.join(__dirname, "public")));
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Try again in 15 minutes." },
+});
+
+function secureCompare(actual, expected) {
+  const actualBuffer = Buffer.from(String(actual));
+  const expectedBuffer = Buffer.from(String(expected));
+
+  return (
+    actualBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(actualBuffer, expectedBuffer)
+  );
+}
+
+function signToken(payload) {
+  return crypto
+    .createHmac("sha256", process.env.ADMIN_TOKEN_SECRET)
+    .update(payload)
+    .digest("base64url");
+}
+
+function createAdminToken() {
+  const payload = Buffer.from(
+    JSON.stringify({ role: "admin", expiresAt: Date.now() + TOKEN_LIFETIME_MS }),
+  ).toString("base64url");
+
+  return `${payload}.${signToken(payload)}`;
+}
+
+function requireAdmin(req, res, next) {
+  const authorization = req.get("authorization") || "";
+  const token = authorization.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : "";
+  const [payload, signature] = token.split(".");
+
+  if (!payload || !signature || !secureCompare(signature, signToken(payload))) {
+    return res.status(401).json({ error: "Admin login required" });
   }
-  console.log("✅ DB connected successfully");
 
-  // ===== CREATE TABLE IF NOT EXISTS =====
-  const createTableSQL = `
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (data.role !== "admin" || data.expiresAt <= Date.now()) {
+      return res.status(401).json({ error: "Admin session expired" });
+    }
+  } catch {
+    return res.status(401).json({ error: "Invalid admin session" });
+  }
+
+  next();
+}
+
+function parseProductId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function optionalText(value, maxLength) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= maxLength ? trimmed : undefined;
+}
+
+function validateProduct(body) {
+  const name = optionalText(body.name, 255);
+  const brand = optionalText(body.brand, 100);
+  const size = optionalText(body.size, 20);
+  const condition = optionalText(body.condition, 50);
+  const price = Number(body.price);
+  let imageUrl = optionalText(body.image_url, 500);
+
+  if (!name) return { error: "A product name is required" };
+  if (!Number.isFinite(price) || price <= 0 || price > 1_000_000) {
+    return { error: "Price must be a positive number" };
+  }
+  if ([brand, size, condition, imageUrl].includes(undefined)) {
+    return { error: "One or more product fields are invalid or too long" };
+  }
+
+  if (imageUrl) {
+    try {
+      const parsed = new URL(imageUrl);
+      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
+      imageUrl = parsed.toString();
+    } catch {
+      return { error: "Image URL must be a valid http or https address" };
+    }
+  }
+
+  return {
+    product: { name, brand, size, condition, price, imageUrl },
+  };
+}
+
+app.get("/api/health", async (req, res, next) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ status: "ok" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/products", async (req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, name, brand, size, price, condition, image_url, status
+      FROM products
+      ORDER BY created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/products/:id", async (req, res, next) => {
+  const id = parseProductId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Invalid product ID" });
+
+  try {
+    const result = await pool.query(
+      `SELECT id, name, brand, size, price, condition, image_url, status
+       FROM products WHERE id = $1`,
+      [id],
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/login", loginLimiter, (req, res) => {
+  const { username = "", password = "" } = req.body || {};
+  const validUser = secureCompare(username, process.env.ADMIN_USER);
+  const validPassword = secureCompare(password, process.env.ADMIN_PASSWORD);
+
+  if (!validUser || !validPassword) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  res.json({ token: createAdminToken(), expiresIn: TOKEN_LIFETIME_MS });
+});
+
+app.post("/api/products", requireAdmin, async (req, res, next) => {
+  const { error, product } = validateProduct(req.body || {});
+  if (error) return res.status(400).json({ error });
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO products (name, brand, size, price, condition, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [
+        product.name,
+        product.brand,
+        product.size,
+        product.price,
+        product.condition,
+        product.imageUrl,
+      ],
+    );
+    res.status(201).json({ id: result.rows[0].id });
+  } catch (databaseError) {
+    next(databaseError);
+  }
+});
+
+app.put("/api/products/:id", requireAdmin, async (req, res, next) => {
+  const id = parseProductId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Invalid product ID" });
+
+  const { error, product } = validateProduct(req.body || {});
+  if (error) return res.status(400).json({ error });
+
+  try {
+    const result = await pool.query(
+      `UPDATE products
+       SET name = $1, brand = $2, size = $3, price = $4,
+           condition = $5, image_url = $6
+       WHERE id = $7`,
+      [
+        product.name,
+        product.brand,
+        product.size,
+        product.price,
+        product.condition,
+        product.imageUrl,
+        id,
+      ],
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    res.json({ success: true });
+  } catch (databaseError) {
+    next(databaseError);
+  }
+});
+
+app.patch("/api/products/:id/status", requireAdmin, async (req, res, next) => {
+  const id = parseProductId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Invalid product ID" });
+  const status = req.body?.status;
+  if (!["available", "reserved", "sold"].includes(status)) {
+    return res.status(400).json({
+      error: "Status must be available, reserved, or sold",
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      "UPDATE products SET status = $1, is_sold = $2 WHERE id = $3",
+      [status, status === "sold", id],
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/products/:id", requireAdmin, async (req, res, next) => {
+  const id = parseProductId(req.params.id);
+  if (!id) return res.status(400).json({ error: "Invalid product ID" });
+
+  try {
+    const result = await pool.query("DELETE FROM products WHERE id = $1", [id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+app.use((error, req, res, next) => {
+  console.error("Request failed:", error.message);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+async function start() {
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS products (
-      id SERIAL PRIMARY KEY,
+      id BIGSERIAL PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
-      price DECIMAL(10,2) NOT NULL,
+      price NUMERIC(10, 2) NOT NULL CHECK (price > 0),
       brand VARCHAR(100),
       size VARCHAR(20),
       condition VARCHAR(50),
       image_url VARCHAR(500),
-      is_sold BOOLEAN DEFAULT FALSE,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      is_sold BOOLEAN NOT NULL DEFAULT FALSE,
+      status VARCHAR(20) NOT NULL DEFAULT 'available',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
-  `;
-  db.query(createTableSQL, (err) => {
-    if (err) {
-      console.error("⚠️ Table creation warning:", err.message);
-    } else {
-      console.log("✅ Products table ready");
-    }
-  });
-});
-
-// ========== MIDDLEWARE ==========
-app.use(express.json());
-app.use(express.static("public"));
-
-// CORS – allow all origins (fine for demo)
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
-  res.header(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+  `);
+  await pool.query(
+    "ALTER TABLE products ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'available'",
   );
-  if (req.method === "OPTIONS") return res.sendStatus(200);
-  next();
-});
-
-// ========== ROUTES ==========
-
-// ---- Health check ----
-app.get("/", (req, res) => {
-  res.json({ status: "The Boot Locker API is running 🚀" });
-});
-
-// ---- Get all products ----
-app.get("/api/products", (req, res) => {
-  const sql = `
-    SELECT id, name, brand, size, price, condition, image_url, is_sold 
-    FROM products 
-    ORDER BY created_at DESC
-  `;
-  db.query(sql, (err, results) => {
-    if (err) {
-      console.error("❌ Get products error:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
-    res.json(results);
-  });
-});
-
-// ---- Get single product ----
-app.get("/api/products/:id", (req, res) => {
-  const sql = "SELECT * FROM products WHERE id = ?";
-  db.query(sql, [req.params.id], (err, results) => {
-    if (err) {
-      console.error("❌ Get product error:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
-    if (results.length === 0) {
-      return res.status(404).json({ error: "Product not found" });
-    }
-    res.json(results[0]);
-  });
-});
-
-// ---- ADMIN LOGIN ----
-app.post("/api/admin/login", (req, res) => {
-  const { username, password } = req.body;
-  // For demo – in production, use env vars and bcrypt
-  const adminUser = process.env.ADMIN_USER || "admin";
-  const adminPass = process.env.ADMIN_PASS || "boot123";
-
-  if (username === adminUser && password === adminPass) {
-    return res.json({ success: true, message: "Logged in" });
-  }
-  res.status(401).json({ error: "Invalid credentials" });
-});
-
-// ---- CREATE product ----
-app.post("/api/products", (req, res) => {
-  const { name, brand, size, price, condition, image_url } = req.body;
-
-  if (!name || !price) {
-    return res.status(400).json({ error: "Name and price are required" });
-  }
-  if (isNaN(price) || price < 0) {
-    return res.status(400).json({ error: "Price must be a positive number" });
-  }
-
-  const sql = `
-    INSERT INTO products (name, brand, size, price, condition, image_url) 
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
-  db.query(
-    sql,
-    [
-      name,
-      brand || null,
-      size || null,
-      price,
-      condition || null,
-      image_url || null,
-    ],
-    (err, result) => {
-      if (err) {
-        console.error("❌ Create product error:", err);
-        return res.status(500).json({ error: "Failed to add product" });
-      }
-      res.status(201).json({
-        success: true,
-        id: result.insertId,
-        message: "Product added successfully",
-      });
-    },
+  await pool.query(
+    "UPDATE products SET status = 'sold' WHERE is_sold = TRUE AND status = 'available'",
   );
-});
 
-// ---- UPDATE product ----
-app.put("/api/products/:id", (req, res) => {
-  const { name, brand, size, price, condition, image_url, is_sold } = req.body;
-
-  if (!name || !price) {
-    return res.status(400).json({ error: "Name and price are required" });
-  }
-
-  const sql = `
-    UPDATE products 
-    SET name = ?, brand = ?, size = ?, price = ?, condition = ?, image_url = ?, is_sold = ?
-    WHERE id = ?
-  `;
-  db.query(
-    sql,
-    [
-      name,
-      brand || null,
-      size || null,
-      price,
-      condition || null,
-      image_url || null,
-      is_sold === undefined ? 0 : is_sold ? 1 : 0,
-      req.params.id,
-    ],
-    (err) => {
-      if (err) {
-        console.error("❌ Update product error:", err);
-        return res.status(500).json({ error: "Failed to update product" });
-      }
-      res.json({ success: true, message: "Product updated successfully" });
-    },
-  );
-});
-
-// ---- DELETE product ----
-app.delete("/api/products/:id", (req, res) => {
-  const sql = "DELETE FROM products WHERE id = ?";
-  db.query(sql, [req.params.id], (err) => {
-    if (err) {
-      console.error("❌ Delete product error:", err);
-      return res.status(500).json({ error: "Failed to delete product" });
-    }
-    res.json({ success: true, message: "Product deleted successfully" });
+  app.listen(PORT, () => {
+    console.log(`The Boot Locker is running on port ${PORT}`);
   });
-});
+}
 
-// ---- MARK AS SOLD ----
-app.patch("/api/products/:id/sold", (req, res) => {
-  const sql = "UPDATE products SET is_sold = 1 WHERE id = ?";
-  db.query(sql, [req.params.id], (err) => {
-    if (err) {
-      console.error("❌ Mark sold error:", err);
-      return res.status(500).json({ error: "Failed to mark as sold" });
-    }
-    res.json({ success: true, message: "Product marked as sold" });
+async function shutdown() {
+  await pool.end();
+  process.exit(0);
+}
+
+if (require.main === module) {
+  start().catch((error) => {
+    console.error("Unable to start the application:", error.message);
+    process.exit(1);
   });
-});
 
-// ========== ERROR HANDLING ==========
-app.use((err, req, res, next) => {
-  console.error("❌ Unhandled error:", err);
-  res.status(500).json({ error: "Internal server error" });
-});
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+}
 
-// ========== START SERVER ==========
-app.listen(PORT, () => {
-  console.log(`🚀 The Boot Locker API running on port ${PORT}`);
-  console.log(
-    `📦 Database: ${process.env.DATABASE_URL ? "Render (production)" : "Local"}`,
-  );
-});
+module.exports = { app, pool };
