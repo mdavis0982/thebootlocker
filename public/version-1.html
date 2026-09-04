@@ -532,6 +532,7 @@
               <a
                 href="https://www.instagram.com/the_boot_locker"
                 target="_blank"
+                rel="noopener noreferrer"
               >
                 <i class="fab fa-instagram"></i> Instagram
               </a>
@@ -643,6 +644,7 @@
             <a
               href="https://www.instagram.com/the_boot_locker"
               target="_blank"
+              rel="noopener noreferrer"
               class="btn btn-primary"
               style="background: #e94560; border: none"
             >
@@ -679,7 +681,8 @@
                   type="text"
                   class="form-control"
                   id="adminUser"
-                  value="admin"
+                  autocomplete="username"
+                  placeholder="Admin username"
                 />
               </div>
               <div class="mb-3">
@@ -688,7 +691,8 @@
                   type="password"
                   class="form-control"
                   id="adminPass"
-                  value="boot123"
+                  autocomplete="current-password"
+                  placeholder="Admin password"
                 />
               </div>
               <button class="btn-admin-submit" id="adminLoginBtn">
@@ -808,6 +812,7 @@
             >
             &bull; <i class="fab fa-instagram me-1"></i>
             <a href="https://www.instagram.com/the_boot_locker" target="_blank"
+              rel="noopener noreferrer"
               >@the_boot_locker</a
             >
           </small>
@@ -827,265 +832,6 @@
 
     <!-- ===== SCRIPTS ===== -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-      const API_URL = "http://localhost:3000/api";
-      let isAdmin = false;
-      let products = [];
-
-      async function loadProducts() {
-        try {
-          const res = await fetch(`${API_URL}/products`);
-          products = await res.json();
-          renderProducts(products);
-          document.getElementById("productCount").textContent = products.filter(
-            (p) => !p.is_sold,
-          ).length;
-          document.getElementById("listingsCount").textContent =
-            `${products.length} boots • ${products.filter((p) => !p.is_sold).length} available`;
-          if (isAdmin) renderAdminProductList(products);
-        } catch (e) {
-          console.error("Load error:", e);
-          document.getElementById("productGrid").innerHTML = `
-            <div class="empty-state">
-              <i class="fas fa-exclamation-triangle"></i>
-              <h5>Could not load products</h5>
-              <p>Make sure the server is running.</p>
-            </div>
-          `;
-        }
-      }
-
-      function renderProducts(items) {
-        const grid = document.getElementById("productGrid");
-        if (!items || items.length === 0) {
-          grid.innerHTML = `
-            <div class="empty-state">
-              <i class="fas fa-box-open"></i>
-              <h5>No boots yet</h5>
-              <p>Check back soon – new stock arriving regularly.</p>
-            </div>
-          `;
-          return;
-        }
-
-        let html = "";
-        items.forEach((p) => {
-          const isSold = p.is_sold === 1;
-          html += `
-            <div class="product-card">
-              <div class="product-image">
-                ${
-                  p.image_url
-                    ? `<img src="${p.image_url}" alt="${p.name}" />`
-                    : `<div class="no-image"><i class="fas fa-shoe-prints"></i></div>`
-                }
-                ${isSold ? `<span class="sold-badge">SOLD</span>` : ""}
-              </div>
-              <div class="product-body">
-                <div class="product-name">${p.name}</div>
-                <div class="product-brand">${p.brand || "No brand"} • ${p.size || "No size"}</div>
-                <div class="product-meta">
-                  <span class="badge bg-light text-dark">${p.condition || "Condition unknown"}</span>
-                  ${
-                    isSold
-                      ? `<span class="badge bg-danger text-white">Sold</span>`
-                      : `<span class="badge bg-success text-white">Available</span>`
-                  }
-                </div>
-                <div class="product-price">£<span>${parseFloat(p.price).toFixed(2)}</span></div>
-                <div class="product-actions">
-                  ${
-                    isSold
-                      ? `<button class="btn btn-sold" disabled><i class="fas fa-check me-1"></i>Sold</button>`
-                      : `<button class="btn btn-outline-dark" onclick="enquire(${p.id}, '${p.name.replace(/'/g, "\\'")}')"><i class="fas fa-envelope me-1"></i>Enquire</button>`
-                  }
-                </div>
-              </div>
-            </div>
-          `;
-        });
-        grid.innerHTML = html;
-      }
-
-      function enquire(id, name) {
-        window.open(`https://www.instagram.com/the_boot_locker/`, "_blank");
-        navigator.clipboard?.writeText(`Interested in: ${name} (ID: ${id})`);
-        alert(
-          `📩 Enquiry sent to Instagram DM.\nProduct: ${name}\n\nWe'll get back to you shortly.`,
-        );
-      }
-
-      document
-        .getElementById("adminLoginBtn")
-        .addEventListener("click", async function () {
-          const username = document.getElementById("adminUser").value;
-          const password = document.getElementById("adminPass").value;
-          const errorEl = document.getElementById("adminLoginError");
-
-          try {
-            const res = await fetch(`${API_URL}/admin/login`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ username, password }),
-            });
-            const data = await res.json();
-
-            if (res.ok) {
-              isAdmin = true;
-              document.getElementById("adminLogin").style.display = "none";
-              document.getElementById("adminPanel").style.display = "block";
-              errorEl.style.display = "none";
-              renderAdminProductList(products);
-            } else {
-              errorEl.style.display = "block";
-            }
-          } catch (e) {
-            errorEl.textContent = "Server error – check API";
-            errorEl.style.display = "block";
-          }
-        });
-
-      document
-        .getElementById("adminLogoutBtn")
-        .addEventListener("click", function () {
-          isAdmin = false;
-          document.getElementById("adminLogin").style.display = "block";
-          document.getElementById("adminPanel").style.display = "none";
-          document.getElementById("adminLoginError").style.display = "none";
-        });
-
-      function renderAdminProductList(items) {
-        const container = document.getElementById("adminProductList");
-        if (!items || items.length === 0) {
-          container.innerHTML = `<p class="text-muted">No products yet.</p>`;
-          return;
-        }
-
-        let html = `<div class="list-group">`;
-        items.forEach((p) => {
-          html += `
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-              <div>
-                <strong>${p.name}</strong>
-                <span class="badge bg-light text-dark ms-2">£${parseFloat(p.price).toFixed(2)}</span>
-                ${
-                  p.is_sold
-                    ? `<span class="badge bg-danger">Sold</span>`
-                    : `<span class="badge bg-success">Available</span>`
-                }
-                <br /><small class="text-muted">${p.brand || "No brand"} • ${p.size || "No size"}</small>
-              </div>
-              <div>
-                <button class="btn btn-sm btn-outline-success me-1" onclick="toggleSold(${p.id}, ${p.is_sold})">
-                  <i class="fas ${p.is_sold ? "fa-undo" : "fa-check"}"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct(${p.id})">
-                  <i class="fas fa-trash"></i>
-                </button>
-              </div>
-            </div>
-          `;
-        });
-        html += `</div>`;
-        container.innerHTML = html;
-      }
-
-      async function toggleSold(id, currentStatus) {
-        const newStatus = currentStatus === 1 ? 0 : 1;
-        try {
-          const res = await fetch(`${API_URL}/products/${id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ is_sold: newStatus }),
-          });
-          if (res.ok) {
-            await loadProducts();
-            if (isAdmin) renderAdminProductList(products);
-          }
-        } catch (e) {
-          alert("Failed to update status");
-        }
-      }
-
-      async function deleteProduct(id) {
-        if (!confirm("Delete this boot?")) return;
-        try {
-          const res = await fetch(`${API_URL}/products/${id}`, {
-            method: "DELETE",
-          });
-          if (res.ok) {
-            await loadProducts();
-            if (isAdmin) renderAdminProductList(products);
-          }
-        } catch (e) {
-          alert("Failed to delete");
-        }
-      }
-
-      document
-        .getElementById("addProductBtn")
-        .addEventListener("click", async function () {
-          const name = document.getElementById("prodName").value.trim();
-          const price = parseFloat(document.getElementById("prodPrice").value);
-
-          if (!name || !price) {
-            document.getElementById("addProductMsg").innerHTML =
-              `<div class="text-danger">Name and price are required.</div>`;
-            document.getElementById("addProductMsg").style.display = "block";
-            return;
-          }
-
-          const product = {
-            name,
-            brand: document.getElementById("prodBrand").value.trim() || null,
-            size: document.getElementById("prodSize").value.trim() || null,
-            price,
-            condition:
-              document.getElementById("prodCondition").value.trim() || null,
-            image_url:
-              document.getElementById("prodImage").value.trim() || null,
-          };
-
-          try {
-            const res = await fetch(`${API_URL}/products`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(product),
-            });
-            if (res.ok) {
-              document.getElementById("addProductMsg").innerHTML =
-                `<div class="text-success">✅ Boot added successfully!</div>`;
-              document.getElementById("addProductMsg").style.display = "block";
-              [
-                "prodName",
-                "prodBrand",
-                "prodSize",
-                "prodPrice",
-                "prodCondition",
-                "prodImage",
-              ].forEach((id) => (document.getElementById(id).value = ""));
-              await loadProducts();
-              if (isAdmin) renderAdminProductList(products);
-              setTimeout(
-                () =>
-                  (document.getElementById("addProductMsg").style.display =
-                    "none"),
-                3000,
-              );
-            } else {
-              const err = await res.json();
-              document.getElementById("addProductMsg").innerHTML =
-                `<div class="text-danger">❌ ${err.error || "Failed to add"}</div>`;
-              document.getElementById("addProductMsg").style.display = "block";
-            }
-          } catch (e) {
-            document.getElementById("addProductMsg").innerHTML =
-              `<div class="text-danger">❌ Server error</div>`;
-            document.getElementById("addProductMsg").style.display = "block";
-          }
-        });
-
-      document.addEventListener("DOMContentLoaded", loadProducts);
-    </script>
+    <script src="version-1.js"></script>
   </body>
 </html>

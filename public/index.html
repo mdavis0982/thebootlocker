@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Browse genuine football boots from The Boot Locker in County Down."
+    />
+    <title>The Boot Locker | Genuine Football Boots</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <a class="brand" href="#top" aria-label="The Boot Locker home">
+          <span class="brand-mark">BL</span>
+          <span>
+            <strong>The Boot Locker</strong>
+            <small>County Down</small>
+          </span>
+        </a>
+
+        <nav class="main-nav" aria-label="Main navigation">
+          <a href="#catalogue">Catalogue</a>
+          <a href="#about">About</a>
+          <a
+            href="https://www.instagram.com/the_boot_locker/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Instagram</a
+          >
+          <button
+            class="nav-link-button"
+            data-open-dialog="disclaimerDialog"
+          >
+            Disclaimer
+          </button>
+        </nav>
+
+        <button class="button button-dark button-small" id="openAdminButton">
+          Admin
+        </button>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="shell hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">Independent football boot seller • Co. Down</p>
+            <h1>Rare boots.<br /><span>Ready to play.</span></h1>
+            <p class="hero-intro">
+              Genuine football boots, clearly described and shipped across
+              Ireland and Great Britain.
+            </p>
+
+            <div class="hero-actions">
+              <a class="button button-accent" href="#catalogue">Browse stock</a>
+              <a
+                class="button button-ghost"
+                href="https://www.instagram.com/the_boot_locker/"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Visit Instagram ↗</a
+              >
+            </div>
+
+            <div class="hero-stats" aria-label="Shop highlights">
+              <div>
+                <strong id="heroAvailableCount">—</strong>
+                <span>available now</span>
+              </div>
+              <div>
+                <strong>21.4k</strong>
+                <span>Instagram followers</span>
+              </div>
+              <div>
+                <strong>IE + GB</strong>
+                <span>delivery area</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-visual" aria-label="The Boot Locker seller">
+            <div class="hero-image-frame">
+              <img src="IMG_7146.jpeg" alt="The Boot Locker" />
+            </div>
+            <div class="floating-note">
+              <span class="pulse-dot"></span>
+              <div>
+                <strong>New stock added regularly</strong>
+                <small>Follow Instagram for first look</small>
+              </div>
+            </div>
+            <span class="hero-word" aria-hidden="true">BOOT</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="assurance-strip" aria-label="Shopping information">
+        <div class="shell assurance-grid">
+          <span>✓ Genuine pairs</span>
+          <span>✓ Honest condition notes</span>
+          <span>✓ Direct seller contact</span>
+          <span>✓ Ireland &amp; GB postage</span>
+        </div>
+      </section>
+
+      <section class="catalogue-section" id="catalogue">
+        <div class="shell">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Current collection</p>
+              <h2>Find your next pair</h2>
+            </div>
+            <p id="catalogueCount" class="catalogue-count">Loading stock…</p>
+          </div>
+
+          <div class="filter-bar">
+            <label class="search-field">
+              <span class="sr-only">Search boots</span>
+              <span aria-hidden="true">⌕</span>
+              <input
+                id="searchInput"
+                type="search"
+                placeholder="Search name, brand or size"
+              />
+            </label>
+
+            <label>
+              <span class="sr-only">Filter by brand</span>
+              <select id="brandFilter">
+                <option value="">All brands</option>
+              </select>
+            </label>
+
+            <label>
+              <span class="sr-only">Filter by size</span>
+              <select id="sizeFilter">
+                <option value="">All sizes</option>
+              </select>
+            </label>
+
+            <label>
+              <span class="sr-only">Filter by availability</span>
+              <select id="statusFilter">
+                <option value="available">Available now</option>
+                <option value="">All stock</option>
+                <option value="reserved">Reserved</option>
+                <option value="sold">Sold</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="product-grid" id="productGrid" aria-live="polite">
+            <div class="loading-card"></div>
+            <div class="loading-card"></div>
+            <div class="loading-card"></div>
+          </div>
+
+          <div class="empty-state" id="emptyState" hidden>
+            <span>⌕</span>
+            <h3>No matching boots</h3>
+            <p>Try clearing a filter or searching for something else.</p>
+            <button class="text-button" id="clearFiltersButton">
+              Clear all filters
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="about-section" id="about">
+        <div class="shell about-grid">
+          <div class="about-card">
+            <p class="eyebrow">Behind the page</p>
+            <h2>A genuine boot guy from County Down.</h2>
+            <p>
+              Every pair is listed with honest condition information. If you
+              have questions, send the stock number on Instagram and speak
+              directly with the seller.
+            </p>
+          </div>
+          <div class="buying-card">
+            <span class="step-number">01</span>
+            <h3>Choose a pair</h3>
+            <p>Check the size, condition, photographs, and availability.</p>
+          </div>
+          <div class="buying-card">
+            <span class="step-number">02</span>
+            <h3>Enquire directly</h3>
+            <p>We copy the product reference and open Instagram for you.</p>
+          </div>
+          <div class="buying-card">
+            <span class="step-number">03</span>
+            <h3>Arrange the sale</h3>
+            <p>Confirm payment and postage directly with The Boot Locker.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-grid">
+        <div class="brand footer-brand">
+          <span class="brand-mark">BL</span>
+          <span><strong>The Boot Locker</strong><small>County Down</small></span>
+        </div>
+        <p>
+          Sales are arranged directly with the seller. Ask any questions about
+          condition and delivery before purchasing.
+        </p>
+        <div class="footer-links">
+          <button class="footer-link" data-open-dialog="disclaimerDialog">
+            Disclaimer
+          </button>
+          <a
+            href="https://www.instagram.com/the_boot_locker/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >@the_boot_locker ↗</a
+          >
+        </div>
+      </div>
+    </footer>
+
+    <dialog class="dialog disclaimer-dialog" id="disclaimerDialog">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">Please read before purchasing</p>
+          <h2>Disclaimer notice</h2>
+        </div>
+        <button
+          class="dialog-close"
+          data-close-dialog="disclaimerDialog"
+          aria-label="Close disclaimer"
+        >
+          ×
+        </button>
+      </div>
+
+      <div class="disclaimer-intro">
+        <img src="IMG_7146.jpeg" alt="Football boots from The Boot Locker" />
+        <div>
+          <strong>Hi folks,</strong>
+          <p>
+            Just a few things to take into account before purchasing any pair
+            of boots from @the_boot_locker:
+          </p>
+        </div>
+      </div>
+
+      <div class="disclaimer-copy">
+        <p>
+          Please be aware that due to age, condition, exclusivity, rarity and
+          other factors, I cannot guarantee the life-span of any pair of boots,
+          whether used or new. Therefore I cannot offer refunds or returns.
+        </p>
+
+        <p>
+          I wholeheartedly do my best to describe every single boot as honestly
+          and accurately as possible. This is also the reason that I take
+          closeup videos of every pair that has been pre-worn.
+        </p>
+
+        <p>
+          With this in mind, the ugly truth is that there is a possibility that
+          any pair of boots (used or new) could fall apart at any moment... and
+          unfortunately this has been the case on a very small number of
+          occasions. But that is the harsh reality, sadly.
+        </p>
+
+        <div class="disclaimer-note">
+          <p>
+            I am a genuine guy who loves running this page, and sorting you
+            folks out with boots of all shapes, colours and sizes. The last
+            thing I want is for anyone to have a bad experience with myself.
+          </p>
+
+          <p>
+            But please bear all of this in mind before enquiring about any pair
+            of boots.
+          </p>
+        </div>
+
+        <p class="disclaimer-signoff">
+          Thank you all for your continued support.
+        </p>
+      </div>
+
+      <div class="dialog-actions">
+        <button
+          class="button disclaimer-close-button"
+          data-close-dialog="disclaimerDialog"
+        >
+          Close
+        </button>
+        <a
+          class="button button-accent"
+          href="https://www.instagram.com/the_boot_locker/"
+          target="_blank"
+          rel="noopener noreferrer"
+          >View Instagram ↗</a
+        >
+      </div>
+    </dialog>
+
+    <dialog class="dialog product-dialog" id="productDialog">
+      <button
+        class="dialog-close"
+        data-close-dialog="productDialog"
+        aria-label="Close product details"
+      >
+        ×
+      </button>
+      <div id="productDialogContent"></div>
+    </dialog>
+
+    <dialog class="dialog admin-dialog" id="adminDialog">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">Private area</p>
+          <h2>Stock manager</h2>
+        </div>
+        <button
+          class="dialog-close"
+          data-close-dialog="adminDialog"
+          aria-label="Close admin"
+        >
+          ×
+        </button>
+      </div>
+
+      <section id="adminLogin">
+        <p class="muted">Sign in to add or manage boots.</p>
+        <form id="adminLoginForm" class="stack-form">
+          <label>
+            Username
+            <input
+              id="adminUser"
+              type="text"
+              autocomplete="username"
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              id="adminPass"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+          <button class="button button-accent" type="submit">Sign in</button>
+          <p class="form-message error-message" id="adminLoginError" hidden></p>
+        </form>
+      </section>
+
+      <section id="adminPanel" hidden>
+        <div class="admin-toolbar">
+          <span><span class="online-dot"></span> Signed in</span>
+          <button class="text-button danger-text" id="adminLogoutButton">
+            Log out
+          </button>
+        </div>
+
+        <form id="addProductForm" class="admin-form">
+          <div class="form-heading">
+            <span>New listing</span>
+            <small>Fields marked * are required</small>
+          </div>
+          <div class="form-grid">
+            <label class="wide">
+              Product name *
+              <input id="productName" type="text" maxlength="255" required />
+            </label>
+            <label>
+              Brand
+              <input id="productBrand" type="text" maxlength="100" />
+            </label>
+            <label>
+              Size
+              <input id="productSize" type="text" maxlength="20" />
+            </label>
+            <label>
+              Price (£) *
+              <input
+                id="productPrice"
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+              />
+            </label>
+            <label>
+              Condition
+              <select id="productCondition">
+                <option value="">Choose condition</option>
+                <option>New</option>
+                <option>Like new</option>
+                <option>Excellent</option>
+                <option>Good</option>
+                <option>Well used</option>
+              </select>
+            </label>
+            <label class="wide">
+              Public image URL
+              <input
+                id="productImage"
+                type="url"
+                placeholder="https://example.com/boots.jpg"
+              />
+            </label>
+          </div>
+          <button class="button button-accent" type="submit">Add boot</button>
+          <p class="form-message" id="addProductMessage" hidden></p>
+        </form>
+
+        <div class="inventory-heading">
+          <h3>Current inventory</h3>
+          <span id="adminItemCount"></span>
+        </div>
+        <div class="inventory-list" id="adminProductList"></div>
+      </section>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
