@@ -566,6 +566,7 @@ element("adminLogoutButton").addEventListener("click", function () {
 
 element("addProductForm").addEventListener("submit", async function (event) {
   event.preventDefault();
+  const form = event.currentTarget;
   const messageElement = element("addProductMessage");
   messageElement.hidden = true;
 
@@ -588,7 +589,7 @@ element("addProductForm").addEventListener("submit", async function (event) {
       throw new Error(data.error || "The product could not be added");
     }
 
-    event.currentTarget.reset();
+    form.reset();
     messageElement.textContent = "Boot added successfully.";
     messageElement.className = "form-message success-message";
     messageElement.hidden = false;
