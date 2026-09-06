@@ -8,9 +8,11 @@
       content="Browse genuine football boots from The Boot Locker in County Down."
     />
     <title>The Boot Locker | Genuine Football Boots</title>
+    <link rel="preload" href="fonts/Anton-Regular.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <a class="skip-link" href="#catalogue">Skip to the boots</a>
     <header class="site-header">
       <div class="shell header-inner">
         <a class="brand" href="#top" aria-label="The Boot Locker home">
@@ -48,7 +50,7 @@
       <section class="hero">
         <div class="shell hero-grid">
           <div class="hero-copy">
-            <p class="eyebrow">Independent football boot seller • Co. Down</p>
+            <p class="eyebrow">Independent spirit. County Down roots.</p>
             <h1>Rare boots.<br /><span>Ready to play.</span></h1>
             <p class="hero-intro">
               Genuine football boots, clearly described and shipped across
@@ -56,7 +58,7 @@
             </p>
 
             <div class="hero-actions">
-              <a class="button button-accent" href="#catalogue">Browse stock</a>
+              <a class="button button-accent" href="#catalogue">Find your pair <span aria-hidden="true">↗</span></a>
               <a
                 class="button button-ghost"
                 href="https://www.instagram.com/the_boot_locker/"
@@ -72,8 +74,8 @@
                 <span>available now</span>
               </div>
               <div>
-                <strong>21.4k</strong>
-                <span>Instagram followers</span>
+                <strong>Direct</strong>
+                <span>from the seller</span>
               </div>
               <div>
                 <strong>IE + GB</strong>
@@ -82,18 +84,14 @@
             </div>
           </div>
 
-          <div class="hero-visual" aria-label="The Boot Locker seller">
+          <div class="hero-visual" aria-label="Football boots from The Boot Locker">
+            <div class="pitch-marking" aria-hidden="true"></div>
             <div class="hero-image-frame">
-              <img src="IMG_7146.jpeg" alt="The Boot Locker" />
+              <div class="photo-caption"><span>The Boot Locker</span></div>
+              <img src="IMG_7146.jpeg" alt="A collection of colourful football boots from The Boot Locker" fetchpriority="high" />
+              <div class="photo-footnote">For the love of the game.</div>
             </div>
-            <div class="floating-note">
-              <span class="pulse-dot"></span>
-              <div>
-                <strong>New stock added regularly</strong>
-                <small>Follow Instagram for first look</small>
-              </div>
-            </div>
-            <span class="hero-word" aria-hidden="true">BOOT</span>
+            <div class="kickoff-badge" aria-hidden="true">Next pair.<br />Next game.<span>↗</span></div>
           </div>
         </div>
       </section>
@@ -107,12 +105,13 @@
         </div>
       </section>
 
-      <section class="catalogue-section" id="catalogue">
+      <section class="catalogue-section" id="catalogue" tabindex="-1">
         <div class="shell">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Current collection</p>
+              <p class="eyebrow">The boot room</p>
               <h2>Find your next pair</h2>
+              <p class="section-intro">Your size. Your style. Your next game.</p>
             </div>
             <p id="catalogueCount" class="catalogue-count">Loading stock…</p>
           </div>
@@ -173,7 +172,7 @@
       <section class="about-section" id="about">
         <div class="shell about-grid">
           <div class="about-card">
-            <p class="eyebrow">Behind the page</p>
+            <p class="eyebrow">Football first. Always.</p>
             <h2>A genuine boot guy from County Down.</h2>
             <p>
               Every pair is listed with honest condition information. If you
