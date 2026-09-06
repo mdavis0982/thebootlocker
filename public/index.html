@@ -366,9 +366,19 @@
         </div>
 
         <form id="addProductForm" class="admin-form">
+          <fieldset id="productFields">
           <div class="form-heading">
-            <span>New listing</span>
+            <span id="listingHeading">New listing</span>
             <small>Fields marked * are required</small>
+          </div>
+          <div class="photo-picker">
+            <label for="productPhotos">Product photos</label>
+            <p class="muted" id="photoHelp">Select up to 8 existing photos from your phone or computer. JPG, PNG, WebP or HEIC, up to 10 MB each.</p>
+            <input id="productPhotos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" multiple aria-describedby="photoHelp uploadAvailability" />
+            <p id="photoSelectionCount" class="muted" aria-live="polite">No photos selected</p>
+            <p id="uploadAvailability" class="muted" role="status"></p>
+            <div id="photoPreviews" class="photo-previews"></div>
+            <p id="photoMessage" class="form-message error-message" role="alert" hidden></p>
           </div>
           <div class="form-grid">
             <label class="wide">
@@ -381,7 +391,7 @@
             </label>
             <label>
               Size
-              <input id="productSize" type="text" maxlength="20" />
+              <input id="productSize" type="text" maxlength="20" placeholder="e.g. UK 9" />
             </label>
             <label>
               Price (£) *
@@ -389,6 +399,7 @@
                 id="productPrice"
                 type="number"
                 min="0.01"
+                max="1000000"
                 step="0.01"
                 required
               />
@@ -405,16 +416,16 @@
               </select>
             </label>
             <label class="wide">
-              Public image URL
-              <input
-                id="productImage"
-                type="url"
-                placeholder="https://example.com/boots.jpg"
-              />
+              Description and condition notes
+              <textarea id="productDescription" rows="4" maxlength="3000" placeholder="Describe the fit, sole type, wear, marks and what is included."></textarea>
             </label>
           </div>
-          <button class="button button-accent" type="submit">Add boot</button>
-          <p class="form-message" id="addProductMessage" hidden></p>
+          <div class="form-actions">
+            <button class="button button-accent" id="saveProductButton" type="submit">Add boot</button>
+            <button class="button button-outline" id="cancelEditButton" type="button" hidden>Cancel editing</button>
+          </div>
+          </fieldset>
+          <p class="form-message" id="addProductMessage" role="status" aria-live="polite" hidden></p>
         </form>
 
         <div class="inventory-heading">

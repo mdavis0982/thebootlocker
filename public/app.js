@@ -39,6 +39,12 @@ const PREVIEW_PRODUCTS = [
 let products = [];
 let adminToken = sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
 let toastTimer;
+let editingProductId = null;
+let selectedPhotos = [];
+let savingProduct = false;
+let uploadsEnabled = false;
+const MAX_PHOTOS = 8;
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
 function element(id) {
   return document.getElementById(id);
@@ -84,7 +90,7 @@ async function readJson(response) {
 
 async function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  if (options.body && !headers.has("Content-Type")) {
+  if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (adminToken) {
@@ -110,7 +116,120 @@ function setAdminState(loggedIn) {
   element("adminLoginError").hidden = true;
   element("adminPass").value = "";
 
-  if (loggedIn) renderAdminProducts();
+  if (loggedIn) {
+    renderAdminProducts();
+    checkUploadAvailability();
+  }
+}
+
+async function checkUploadAvailability() {
+  element("uploadAvailability").textContent = "Checking photo uploads…";
+  element("productPhotos").disabled = true;
+  try {
+    const response = await apiFetch("/admin/uploads");
+    const data = await readJson(response);
+    uploadsEnabled = response.ok && data.enabled === true;
+    element("uploadAvailability").textContent = uploadsEnabled
+      ? "The first photo is your cover. Photos upload when you save the listing."
+      : "Photo uploads are not connected yet. You can still edit listing details and keep existing photos.";
+  } catch {
+    uploadsEnabled = false;
+    element("uploadAvailability").textContent = "Could not check photo uploads. Reopen the stock manager to retry.";
+  }
+  element("productPhotos").disabled = !uploadsEnabled;
+}
+
+function productImages(product) {
+  return Array.isArray(product.images) && product.images.length
+    ? product.images : (product.image_url ? [product.image_url] : []);
+}
+
+function clearPhotoSelections() {
+  selectedPhotos.forEach((photo) => {
+    if (photo.preview) URL.revokeObjectURL(photo.preview);
+  });
+  selectedPhotos = [];
+  element("productPhotos").value = "";
+}
+
+function renderPhotoPreviews() {
+  element("photoSelectionCount").textContent = selectedPhotos.length ? `${selectedPhotos.length} of ${MAX_PHOTOS} photos selected` : "No photos selected";
+  element("photoPreviews").innerHTML = selectedPhotos.map((photo, index) => `
+    <div class="photo-preview">
+      <div class="photo-preview-image">
+        <span class="photo-preview-fallback" aria-hidden="true">Preview available after upload</span>
+        <img src="${escapeHtml(photo.url || photo.preview)}" alt="Selected photo ${index + 1}" />
+        ${index === 0 ? '<span class="cover-label">Cover photo</span>' : ''}
+      </div>
+      <span class="photo-filename">${escapeHtml(photo.name || "Photo " + (index + 1))}</span>
+      <div class="photo-controls">
+        ${index > 0 ? `<button type="button" class="text-button" data-cover-photo="${index}" aria-label="Make photo ${index + 1} the cover">Make cover</button>` : '<span>Shown in catalogue</span>'}
+        <button type="button" class="text-button danger-text" data-remove-photo="${index}" aria-label="Remove photo ${index + 1}">Remove</button>
+      </div>
+    </div>`).join("");
+  element("photoPreviews").querySelectorAll("img").forEach((img) => {
+    img.addEventListener("error", () => {
+      img.hidden = true;
+      img.previousElementSibling.setAttribute("aria-hidden", "false");
+    });
+  });
+  element("photoPreviews").querySelectorAll("[data-cover-photo]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [photo] = selectedPhotos.splice(Number(button.dataset.coverPhoto), 1);
+      selectedPhotos.unshift(photo);
+      renderPhotoPreviews();
+    });
+  });
+  element("photoPreviews").querySelectorAll("[data-remove-photo]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [photo] = selectedPhotos.splice(Number(button.dataset.removePhoto), 1);
+      if (photo.preview) URL.revokeObjectURL(photo.preview);
+      renderPhotoPreviews();
+    });
+  });
+}
+
+function resetProductForm() {
+  element("addProductForm").reset();
+  editingProductId = null;
+  clearPhotoSelections();
+  renderPhotoPreviews();
+  element("listingHeading").textContent = "New listing";
+  element("saveProductButton").textContent = "Add boot";
+  element("cancelEditButton").hidden = true;
+  element("photoMessage").hidden = true;
+  element("addProductMessage").hidden = true;
+}
+
+function editProduct(id) {
+  if (savingProduct) return;
+  const product = products.find((item) => String(item.id) === String(id));
+  if (!product) return;
+  if (hasProductDraft() && !window.confirm("Discard the current unsaved listing changes?")) return;
+  resetProductForm();
+  editingProductId = String(id);
+  element("productName").value = product.name;
+  element("productBrand").value = product.brand || "";
+  element("productSize").value = product.size || "";
+  element("productPrice").value = product.price;
+  const condition = element("productCondition");
+  if (product.condition && !Array.from(condition.options).some((option) => option.value === product.condition)) {
+    condition.add(new Option(product.condition, product.condition));
+  }
+  condition.value = product.condition || "";
+  element("productDescription").value = product.description || "";
+  selectedPhotos = productImages(product).map((url) => ({ url }));
+  renderPhotoPreviews();
+  element("listingHeading").textContent = "Editing stock #" + id;
+  element("saveProductButton").textContent = "Save changes";
+  element("cancelEditButton").hidden = false;
+  element("addProductForm").scrollIntoView({ block: "start" });
+  element("productName").focus({ preventScroll: true });
+}
+
+function hasProductDraft() {
+  return selectedPhotos.length > 0 || ["productName", "productBrand", "productSize", "productPrice", "productCondition", "productDescription"]
+    .some((id) => element(id).value !== "");
 }
 
 function statusPill(status) {
@@ -127,14 +246,15 @@ function statusPill(status) {
 }
 
 function imageMarkup(product, className) {
-  if (!product.image_url) {
+  const cover = productImages(product)[0];
+  if (!cover) {
     return '<div class="image-placeholder">BL</div>';
   }
   return (
     '<img class="' +
     (className || "") +
     '" src="' +
-    escapeHtml(product.image_url) +
+    escapeHtml(cover) +
     '" alt="' +
     escapeHtml(product.name) +
     '" loading="lazy" />'
@@ -328,9 +448,9 @@ function openProduct(id) {
   const canEnquire = status === "available";
   element("productDialogContent").innerHTML =
     '<div class="product-detail-grid">' +
-    '<div class="product-detail-image">' +
+    '<div class="product-gallery"><div class="product-detail-image" id="galleryMain">' +
     imageMarkup(product) +
-    "</div>" +
+    '</div><div class="gallery-thumbnails" id="galleryThumbnails" aria-label="Product photos"></div></div>' +
     '<div class="product-detail-copy">' +
     '<p class="eyebrow">Stock #' +
     escapeHtml(product.id) +
@@ -356,21 +476,36 @@ function openProduct(id) {
     status.slice(1) +
     "</strong></div>" +
     "</div>" +
+    (product.description ? '<div class="condition-notes"><h3>Description &amp; condition</h3><p>' + escapeHtml(product.description) + '</p></div>' : '') +
     '<button class="button button-accent" id="dialogEnquireButton"' +
     (canEnquire ? "" : " disabled") +
     ">" +
     (canEnquire ? "Enquire on Instagram ↗" : "Currently " + status) +
     "</button>" +
+    '<p class="enquiry-help" id="enquiryHelp" hidden></p>' +
     "</div>" +
     "</div>";
 
   element("dialogEnquireButton").addEventListener("click", function () {
     enquire(product);
   });
+  const images = productImages(product);
+  if (images.length > 1) {
+    element("galleryThumbnails").innerHTML = images.map((url, index) =>
+      `<button type="button" class="gallery-thumbnail" aria-label="View photo ${index + 1}" aria-pressed="${index === 0}"><img src="${escapeHtml(url)}" alt="${escapeHtml(product.name)} — photo ${index + 1}" loading="lazy" /></button>`
+    ).join("");
+    element("galleryThumbnails").querySelectorAll("button").forEach((button, index) => {
+      button.addEventListener("click", () => {
+        element("galleryMain").querySelector("img").src = images[index];
+        element("galleryMain").querySelector("img").alt = product.name + " — photo " + (index + 1);
+        element("galleryThumbnails").querySelectorAll("button").forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+      });
+    });
+  }
   element("productDialog").showModal();
 }
 
-function enquire(product) {
+async function enquire(product) {
   const message =
     "Hi, I'm interested in " +
     product.name +
@@ -379,10 +514,16 @@ function enquire(product) {
     "). Is it still available?";
 
   window.open(INSTAGRAM_URL, "_blank", "noopener,noreferrer");
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(message).catch(function () {});
+  try {
+    await navigator.clipboard.writeText(message);
+    showToast("Enquiry copied. Paste it into a message to The Boot Locker on Instagram.");
+  } catch {
+    if (!element("productDialog").open) openProduct(product.id);
+    const help = element("enquiryHelp");
+    help.hidden = false;
+    help.textContent = "Copy this message and send it on Instagram: " + message;
+    showToast("Could not copy automatically. Your enquiry message is shown with the product.");
   }
-  showToast("Instagram opened — the enquiry message has been copied.");
 }
 
 function renderAdminProducts() {
@@ -425,6 +566,7 @@ function renderAdminProducts() {
         (status === "sold" ? " selected" : "") +
         ">Sold</option>" +
         "</select>" +
+        '<button class="button button-outline edit-product-button" data-product-id="' + id + '" aria-label="Edit ' + escapeHtml(product.name) + '">Edit</button>' +
         '<button class="icon-button delete-button" data-product-id="' +
         id +
         '" aria-label="Delete ' +
@@ -446,6 +588,10 @@ function renderAdminProducts() {
       deleteProduct(button.dataset.productId);
     });
   });
+  container.querySelectorAll(".edit-product-button").forEach((button) => {
+    button.addEventListener("click", () => editProduct(button.dataset.productId));
+  });
+  if (savingProduct) container.querySelectorAll("button, select").forEach((control) => { control.disabled = true; });
 }
 
 async function updateProductStatus(id, status) {
@@ -467,6 +613,7 @@ async function updateProductStatus(id, status) {
 }
 
 async function deleteProduct(id) {
+  if (savingProduct) return;
   const product = products.find(function (item) {
     return String(item.id) === String(id);
   });
@@ -480,6 +627,7 @@ async function deleteProduct(id) {
       throw new Error(data.error || "The product could not be deleted");
     }
     showToast("Product deleted.");
+    if (String(editingProductId) === String(id)) resetProductForm();
     await loadProducts();
   } catch (error) {
     showToast(error.message);
@@ -560,15 +708,62 @@ element("adminLoginForm").addEventListener("submit", async function (event) {
 });
 
 element("adminLogoutButton").addEventListener("click", function () {
+  if (savingProduct) return;
+  if (hasProductDraft() && !window.confirm("Discard unsaved listing changes and sign out?")) return;
+  resetProductForm();
   setAdminState(false);
   showToast("Signed out.");
 });
 
+element("productPhotos").addEventListener("change", function (event) {
+  const input = event.currentTarget;
+  const files = Array.from(input.files || []);
+  input.value = "";
+  const error = element("photoMessage");
+  error.hidden = true;
+  if (selectedPhotos.length + files.length > MAX_PHOTOS) {
+    error.textContent = "Choose up to 8 photos in total. Remove a photo before adding more.";
+    error.hidden = false;
+    return;
+  }
+  for (const file of files) {
+    if (!/\.(jpe?g|png|webp|heic|heif)$/i.test(file.name) || file.size > MAX_PHOTO_BYTES || file.size === 0) {
+      error.textContent = "Choose JPG, PNG, WebP or HEIC photos, each up to 10 MB. No new photos were added.";
+      error.hidden = false;
+      return;
+    }
+  }
+  files.forEach((file) => selectedPhotos.push({ file, name: file.name, preview: URL.createObjectURL(file) }));
+  renderPhotoPreviews();
+});
+
+element("cancelEditButton").addEventListener("click", () => {
+  if (!savingProduct && window.confirm("Discard unsaved changes to this listing?")) resetProductForm();
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (savingProduct || hasProductDraft()) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
+});
+
+function setSavingProduct(busy) {
+  savingProduct = busy;
+  element("productFields").disabled = busy;
+  element("addProductForm").setAttribute("aria-busy", String(busy));
+  element("adminLogoutButton").disabled = busy;
+  element("adminProductList").querySelectorAll("button, select").forEach((control) => { control.disabled = busy; });
+}
+
 element("addProductForm").addEventListener("submit", async function (event) {
   event.preventDefault();
-  const form = event.currentTarget;
+  if (savingProduct) return;
+  const isEditing = editingProductId !== null;
   const messageElement = element("addProductMessage");
-  messageElement.hidden = true;
+  messageElement.hidden = false;
+  messageElement.className = "form-message";
+  messageElement.textContent = "Preparing listing…";
 
   const product = {
     name: element("productName").value.trim(),
@@ -576,29 +771,47 @@ element("addProductForm").addEventListener("submit", async function (event) {
     size: element("productSize").value.trim() || null,
     price: Number(element("productPrice").value),
     condition: element("productCondition").value || null,
-    image_url: element("productImage").value.trim() || null,
+    description: element("productDescription").value.trim(),
   };
 
+  setSavingProduct(true);
   try {
-    const response = await apiFetch("/products", {
-      method: "POST",
+    const pendingPhotos = selectedPhotos.filter((photo) => !photo.url);
+    if (pendingPhotos.length && !uploadsEnabled) throw new Error("Photo uploads are not connected. Your changes have been kept.");
+    for (let index = 0; index < pendingPhotos.length; index++) {
+      messageElement.textContent = `Uploading photo ${index + 1} of ${pendingPhotos.length}… Please keep this page open.`;
+      const photo = pendingPhotos[index];
+      const body = new FormData();
+      body.append("photo", photo.file);
+      const response = await apiFetch("/admin/photos", { method: "POST", body });
+      const data = await readJson(response);
+      if (!response.ok || !data.url) throw new Error(data.error || "A photo could not be uploaded. Please try saving again.");
+      // Keep successful uploads on retry so earlier photos aren't uploaded twice.
+      photo.url = data.url;
+    }
+    product.images = selectedPhotos.map((photo) => photo.url);
+    messageElement.textContent = "Saving listing…";
+    const response = await apiFetch(isEditing ? "/products/" + editingProductId : "/products", {
+      method: isEditing ? "PUT" : "POST",
       body: JSON.stringify(product),
     });
     const data = await readJson(response);
     if (!response.ok) {
-      throw new Error(data.error || "The product could not be added");
+      throw new Error(data.error || "The listing could not be saved");
     }
 
-    form.reset();
-    messageElement.textContent = "Boot added successfully.";
+    resetProductForm();
+    messageElement.textContent = isEditing ? "Changes saved successfully." : "Boot added successfully.";
     messageElement.className = "form-message success-message";
     messageElement.hidden = false;
-    showToast("New boot added to the catalogue.");
+    showToast(isEditing ? "Listing updated." : "New boot added to the catalogue.");
     await loadProducts();
   } catch (error) {
     messageElement.textContent = error.message;
     messageElement.className = "form-message error-message";
     messageElement.hidden = false;
+  } finally {
+    setSavingProduct(false);
   }
 });
 

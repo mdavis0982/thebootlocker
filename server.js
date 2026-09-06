@@ -6,6 +6,7 @@ const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { Pool } = require("pg");
+const media = require("./media");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -63,7 +64,7 @@ app.use(
         ],
         scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
         fontSrc: ["'self'", "data:", "https://cdnjs.cloudflare.com"],
-        imgSrc: ["'self'", "data:", "https:"],
+        imgSrc: ["'self'", "data:", "blob:", "https:"],
         connectSrc: ["'self'"],
       },
     },
@@ -78,6 +79,14 @@ const loginLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { error: "Too many login attempts. Try again in 15 minutes." },
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 80,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Photo upload limit reached. Please try again in 15 minutes." },
 });
 
 function secureCompare(actual, expected) {
@@ -147,6 +156,11 @@ function validateProduct(body) {
   const condition = optionalText(body.condition, 50);
   const price = Number(body.price);
   let imageUrl = optionalText(body.image_url, 500);
+  const description = body.description === undefined ? undefined :
+    (typeof body.description === "string" ? body.description.trim() : null);
+  if (description === null || description?.length > 3000) {
+    return { error: "Condition notes must be text of up to 3,000 characters" };
+  }
 
   if (!name) return { error: "A product name is required" };
   if (!Number.isFinite(price) || price <= 0 || price > 1_000_000) {
@@ -166,8 +180,31 @@ function validateProduct(body) {
     }
   }
 
+  let images;
+  if (body.images !== undefined) {
+    if (!Array.isArray(body.images) || body.images.length > media.MAX_PHOTOS) {
+      return { error: "Choose up to 8 photos" };
+    }
+    images = [];
+    for (const value of body.images) {
+      try {
+        if (typeof value !== "string" || !value || value.length > 500) throw new Error();
+        const parsed = new URL(value);
+        if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error();
+        const url = parsed.toString();
+        if (url.length > 500) throw new Error();
+        if (!images.includes(url)) images.push(url);
+      } catch {
+        return { error: "Each photo must have a valid public image URL" };
+      }
+    }
+    imageUrl = images[0] || null;
+  } else if (Object.hasOwn(body, "image_url")) {
+    images = imageUrl ? [imageUrl] : [];
+  }
+
   return {
-    product: { name, brand, size, condition, price, imageUrl },
+    product: { name, brand, size, condition, price, imageUrl, images, description },
   };
 }
 
@@ -183,7 +220,7 @@ app.get("/api/health", async (req, res, next) => {
 app.get("/api/products", async (req, res, next) => {
   try {
     const result = await pool.query(`
-      SELECT id, name, brand, size, price, condition, image_url, status
+      SELECT id, name, brand, size, price, condition, image_url, images, description, status
       FROM products
       ORDER BY created_at DESC
     `);
@@ -199,7 +236,7 @@ app.get("/api/products/:id", async (req, res, next) => {
 
   try {
     const result = await pool.query(
-      `SELECT id, name, brand, size, price, condition, image_url, status
+      `SELECT id, name, brand, size, price, condition, image_url, images, description, status
        FROM products WHERE id = $1`,
       [id],
     );
@@ -224,14 +261,45 @@ app.post("/api/admin/login", loginLimiter, (req, res) => {
   res.json({ token: createAdminToken(), expiresIn: TOKEN_LIFETIME_MS });
 });
 
+app.get("/api/admin/uploads", requireAdmin, (req, res) => {
+  res.set("Cache-Control", "no-store").json({
+    enabled: media.uploadsConfigured(),
+    maxPhotos: media.MAX_PHOTOS,
+    maxBytes: media.MAX_PHOTO_BYTES,
+  });
+});
+
+app.post("/api/admin/photos", requireAdmin, uploadLimiter, (req, res, next) => {
+  if (!media.uploadsConfigured()) {
+    return res.status(503).json({ error: "Photo uploads are not connected yet. Your listing has not been changed." });
+  }
+  media.receivePhoto(req, res, async (error) => {
+    if (error) {
+      return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+        error: error.code === "LIMIT_FILE_SIZE" ? "Each photo must be 10 MB or smaller" : "Choose one photo per upload",
+      });
+    }
+    if (!req.file || !media.isSupportedPhoto(req.file.buffer)) {
+      return res.status(400).json({ error: "Choose a JPG, PNG, WebP or HEIC photo" });
+    }
+    try {
+      const url = await media.uploadPhoto(req.file.buffer);
+      res.status(201).json({ url });
+    } catch (uploadError) {
+      // Do not return provider responses, which can contain account details.
+      res.status(502).json({ error: "This photo could not be uploaded. Please retry, or choose a JPG or PNG copy." });
+    }
+  });
+});
+
 app.post("/api/products", requireAdmin, async (req, res, next) => {
   const { error, product } = validateProduct(req.body || {});
   if (error) return res.status(400).json({ error });
 
   try {
     const result = await pool.query(
-      `INSERT INTO products (name, brand, size, price, condition, image_url)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO products (name, brand, size, price, condition, image_url, images, description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
        RETURNING id`,
       [
         product.name,
@@ -240,6 +308,8 @@ app.post("/api/products", requireAdmin, async (req, res, next) => {
         product.price,
         product.condition,
         product.imageUrl,
+        JSON.stringify(product.images || []),
+        product.description || "",
       ],
     );
     res.status(201).json({ id: result.rows[0].id });
@@ -259,8 +329,11 @@ app.put("/api/products/:id", requireAdmin, async (req, res, next) => {
     const result = await pool.query(
       `UPDATE products
        SET name = $1, brand = $2, size = $3, price = $4,
-           condition = $5, image_url = $6
-       WHERE id = $7`,
+           condition = $5,
+           image_url = CASE WHEN $7::jsonb IS NULL THEN image_url ELSE $6 END,
+           images = COALESCE($7::jsonb, images),
+           description = COALESCE($8, description)
+       WHERE id = $9`,
       [
         product.name,
         product.brand,
@@ -268,6 +341,8 @@ app.put("/api/products/:id", requireAdmin, async (req, res, next) => {
         product.price,
         product.condition,
         product.imageUrl,
+        product.images === undefined ? null : JSON.stringify(product.images),
+        product.description ?? null,
         id,
       ],
     );
@@ -328,7 +403,7 @@ app.use((error, req, res, next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-async function start() {
+async function initializeDatabase() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS products (
       id BIGSERIAL PRIMARY KEY,
@@ -338,6 +413,8 @@ async function start() {
       size VARCHAR(20),
       condition VARCHAR(50),
       image_url VARCHAR(500),
+      images JSONB NOT NULL DEFAULT '[]'::jsonb,
+      description TEXT NOT NULL DEFAULT '',
       is_sold BOOLEAN NOT NULL DEFAULT FALSE,
       status VARCHAR(20) NOT NULL DEFAULT 'available',
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -346,10 +423,16 @@ async function start() {
   await pool.query(
     "ALTER TABLE products ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'available'",
   );
+  await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb");
+  await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''");
+  await pool.query("UPDATE products SET images = jsonb_build_array(image_url) WHERE images = '[]'::jsonb AND image_url IS NOT NULL");
   await pool.query(
     "UPDATE products SET status = 'sold' WHERE is_sold = TRUE AND status = 'available'",
   );
+}
 
+async function start() {
+  await initializeDatabase();
   app.listen(PORT, () => {
     console.log(`The Boot Locker is running on port ${PORT}`);
   });
@@ -370,4 +453,4 @@ if (require.main === module) {
   process.on("SIGINT", shutdown);
 }
 
-module.exports = { app, pool };
+module.exports = { app, pool, initializeDatabase };
