@@ -6,10 +6,10 @@ payments.
 
 ## What the first version does
 
-- Shows products and their price, size, condition, image, and status.
+- Shows products with price, size, condition notes, a photo gallery, and status.
 - Opens The Boot Locker's Instagram page with an enquiry message copied.
 - Gives the owner a password-protected admin area.
-- Lets the owner add products, delete them, and set them as Available,
+- Lets the owner add and edit products, delete them, and set them as Available,
   Reserved, or Sold.
 - Stores product data in PostgreSQL.
 - Serves the website and API from one Node.js service.
@@ -66,15 +66,85 @@ After starting the app locally:
 Version 2 is the main storefront. Version 1 remains available as a backup and
 for comparison.
 
-## Product images
+## Product photos and editing
 
-For this first version, the admin pastes a public image URL. Render's local
-filesystem is temporary, so uploaded files should not be saved directly on the
-web server. A proper image-upload service can be added after the demonstration.
+The stock manager lets the owner select existing photos from a phone's photo
+library or a computer's file picker. It does not request camera access. Select up
+to 8 JPG, PNG, WebP, HEIC or HEIF photos, with a maximum of 10 MB per photo.
+Browser/OS photo pickers may still offer their own camera option.
+
+Photos are previewed before saving. Use **Make cover** to choose the catalogue
+image, or **Remove** to take a photo out of the listing. Add written description
+and condition notes, then save. **Edit** loads a listing's existing details and
+photos; saving preserves its Available/Reserved/Sold status.
+
+Uploads occur when the listing is saved, one at a time. If an upload fails, the
+form retains its text and photos in the current tab; retrying skips photos that
+already uploaded successfully. Drafts do not survive closing/reloading the page.
+Saving is disabled while a request is in progress to prevent double clicks.
+
+### Connect Cloudinary in Render
+
+1. Create a Cloudinary account and locate its cloud name, API key and API secret.
+2. In the Render web service's **Environment** settings, add:
+   - `CLOUDINARY_CLOUD_NAME`
+   - `CLOUDINARY_API_KEY`
+   - `CLOUDINARY_API_SECRET`
+3. Save the environment settings and deploy the branch containing this feature.
+4. Refresh the site, sign in to Admin and check that the photo picker is enabled.
+5. Select a real photo, save a listing, refresh and verify the photo is still
+   present. Also test a HEIC photo from the owner's actual phone if used.
+
+Keep credentials in Render's environment settings or a local ignored `.env`.
+Never put them in the frontend, GitHub or chat. No unsigned upload preset is
+needed: the authenticated server uploads to Cloudinary using the Node SDK.
+See [Cloudinary's Node upload documentation](https://cloudinary.com/documentation/node_image_and_video_upload).
+
+Credentials are optional at startup. Until all three are configured, photo
+selection is disabled and the stock manager explains that uploads are not yet
+connected. Existing product images, editing and the catalogue still work.
+
+Uploads are limited to administrators and rate-limited. The server checks file
+signatures and size, then Cloudinary decodes the image, converts it to JPEG and
+limits its dimensions to 2000 × 2000. Some browsers cannot preview HEIC locally;
+these show a placeholder until uploaded. Photos are public product images.
+Files pass through server memory and are not written to Render's temporary disk.
+
+Removing a photo or deleting a listing removes its database reference, but **does
+not delete the original Cloudinary asset**. Cancelled/failed listings may also
+leave uploaded assets there. Keep an eye on usage and remove unused assets in
+Cloudinary only after checking they aren't used by another listing. This avoids
+accidentally destroying shared photos.
+
+### Database upgrade and verification
+
+Startup adds `images` (JSONB) and `description` columns without dropping existing
+data, and copies each legacy `image_url` into its gallery. The first gallery
+photo is also kept in `image_url` for Version 1 compatibility. Re-running the
+upgrade preserves existing galleries and status. Take a database backup before
+deploying schema changes to a shop with real inventory.
+
+`npm test` covers the API, migrations and persistence using an in-memory
+PostgreSQL engine (PGlite), plus form behaviour using jsdom. Photo provider calls
+are simulated: these tests do not verify Cloudinary credentials, account quotas
+or real HEIC conversion. Perform the live upload check above after configuration.
+
+For a disposable local browser preview, run `npm run preview:admin`, then open
+<http://127.0.0.1:3100> and sign in with `preview` / `preview-only`. This preview
+binds to localhost, uses its own in-memory database and photo storage, and sends
+no requests to Cloudinary or the real database. Everything resets when stopped.
+Its photo storage does not perform Cloudinary's format conversion. Never deploy
+this preview command; the production start command remains `npm start`.
 
 ## Important files
 
+The current storefront uses navy, warm white and orange, with the Anton display
+font served locally. Its SIL Open Font License is included in
+`public/fonts/Anton-OFL.txt`; the original font is from
+[Google Fonts](https://github.com/google/fonts/tree/main/ofl/anton).
+
 - `server.js` — API, admin authentication, and PostgreSQL queries.
+- `media.js` — authenticated photo-upload parsing, validation and Cloudinary storage.
 - `public/index.html` — current Version 2 storefront.
 - `public/styles.css` — Version 2 styling.
 - `public/app.js` — Version 2 catalogue and admin behaviour.
