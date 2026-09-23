@@ -138,10 +138,9 @@ this preview command; the production start command remains `npm start`.
 
 ## Important files
 
-The current storefront uses navy, warm white and orange, with the Anton display
-font served locally. Its SIL Open Font License is included in
-`public/fonts/Anton-OFL.txt`; the original font is from
-[Google Fonts](https://github.com/google/fonts/tree/main/ofl/anton).
+The current storefront uses a monochrome, Instagram-inspired visual system
+with the account image and product photography carrying the identity. The old
+Anton font file remains in the repository for the Version 1 backup.
 
 - `server.js` — API, admin authentication, and PostgreSQL queries.
 - `media.js` — authenticated photo-upload parsing, validation and Cloudinary storage.
